@@ -1,17 +1,16 @@
 import discord
 from discord.ext import commands, tasks
 import requests
+import os
 
 # ==============================
 # CONFIGURATION
 # ==============================
 
-import os
-
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 API_KEY = os.getenv("API_KEY")
-CHECK_INTERVAL = 300  # secondes (5 min)
-MIN_DISCOUNT = 50  # réduction minimale pour alerte (%)
+CHECK_INTERVAL = 300  # 5 minutes
+MIN_DISCOUNT = 25  # réduction minimale (%)
 
 # ==============================
 
@@ -22,47 +21,55 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 tracked_channels = set()
 sent_links = set()
 
+CATEGORIES = {
+    "GPU": "graphics card",
+    "Casques": "headphones",
+    "SSD": "ssd",
+    "Smartphones": "smartphone"
+}
+
 
 def get_deals():
-    url = "https://api.rainforestapi.com/request"
-    params = {
-        "api_key": API_KEY,
-        "type": "search",
-        "amazon_domain": "amazon.fr",
-        "search_term": "electronics",
-        "sort_by": "price_low_to_high"
-    }
-
-    response = requests.get(url, params=params)
-    data = response.json()
-
     deals = []
 
-    for product in data.get("search_results", [])[:20]:
-        price_data = product.get("price", {})
-        price = price_data.get("value")
+    for category, keyword in CATEGORIES.items():
+        url = "https://api.rainforestapi.com/request"
+        params = {
+            "api_key": API_KEY,
+            "type": "search",
+            "amazon_domain": "amazon.fr",
+            "search_term": keyword,
+            "sort_by": "price_low_to_high"
+        }
 
-        original_price_data = product.get("list_price", {})
-        original_price = original_price_data.get("value")
+        response = requests.get(url, params=params)
+        data = response.json()
 
-        title = product.get("title")
-        link = product.get("link")
-        image = product.get("image")
+        for product in data.get("search_results", [])[:10]:
+            price_data = product.get("price", {})
+            price = price_data.get("value")
 
-        if not price or not original_price:
-            continue
+            original_price_data = product.get("list_price", {})
+            original_price = original_price_data.get("value")
 
-        discount = (original_price - price) / original_price * 100
+            title = product.get("title")
+            link = product.get("link")
+            image = product.get("image")
 
-        if discount >= MIN_DISCOUNT:
-            deals.append({
-                "title": title,
-                "price": price,
-                "original_price": original_price,
-                "discount": int(discount),
-                "link": link,
-                "image": image
-            })
+            if not price or not original_price:
+                continue
+
+            discount = (original_price - price) / original_price * 100
+
+            if discount >= MIN_DISCOUNT:
+                deals.append({
+                    "title": f"[{category}] {title}",
+                    "price": price,
+                    "original_price": original_price,
+                    "discount": int(discount),
+                    "link": link,
+                    "image": image
+                })
 
     return deals
 
@@ -78,7 +85,6 @@ async def send_deal(deal, channel):
         color=0x00ff99
     )
     embed.set_image(url=deal["image"])
-
     await channel.send(embed=embed)
 
 
